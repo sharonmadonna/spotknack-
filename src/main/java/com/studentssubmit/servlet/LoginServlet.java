@@ -2,6 +2,12 @@ package com.studentssubmit.servlet;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
 import org.json.JSONObject;
 
 import javax.servlet.ServletException;
@@ -14,10 +20,13 @@ import javax.servlet.http.HttpServletResponse;
 public class LoginServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
 
+    private static final String DB_URL = "jdbc:oracle:thin:@localhost:1521:xe";
+    private static final String DB_USER = "system";
+    private static final String DB_PASSWORD = "asm3009"; // use YOUR actual password here
+
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        // Read the JSON body sent by the client
         StringBuilder requestBody = new StringBuilder();
         BufferedReader reader = request.getReader();
         String line;
@@ -25,21 +34,47 @@ public class LoginServlet extends HttpServlet {
             requestBody.append(line);
         }
 
-        // Parse it into a JSON object
         JSONObject inputJson = new JSONObject(requestBody.toString());
         String username = inputJson.getString("username");
         String password = inputJson.getString("password");
 
-        // Build a JSON response (no DB yet, just echoing back for now)
         JSONObject outputJson = new JSONObject();
 
-        // Placeholder logic - real check comes tomorrow with the database
-        if (username.equals("john") && password.equals("1234")) {
-            outputJson.put("status", "success");
-            outputJson.put("message", "Login successful for " + username);
-        } else {
+        try {
+            Class.forName("oracle.jdbc.OracleDriver");
+        } catch (ClassNotFoundException e) {
             outputJson.put("status", "failure");
-            outputJson.put("message", "Invalid username or password");
+            outputJson.put("message", "Driver not found: " + e.getMessage());
+            response.setContentType("application/json");
+            response.getWriter().write(outputJson.toString());
+            return;
+        }
+
+        String selectSql = "SELECT password FROM users WHERE username = ?";
+
+        try (Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+             PreparedStatement statement = connection.prepareStatement(selectSql)) {
+
+            statement.setString(1, username);
+            ResultSet resultSet = statement.executeQuery();
+
+            if (resultSet.next()) {
+                String storedPassword = resultSet.getString("password");
+                if (storedPassword.equals(password)) {
+                    outputJson.put("status", "success");
+                    outputJson.put("message", "Login successful for " + username);
+                } else {
+                    outputJson.put("status", "failure");
+                    outputJson.put("message", "Invalid username or password");
+                }
+            } else {
+                outputJson.put("status", "failure");
+                outputJson.put("message", "Invalid username or password");
+            }
+
+        } catch (SQLException e) {
+            outputJson.put("status", "failure");
+            outputJson.put("message", "Login failed: " + e.getMessage());
         }
 
         response.setContentType("application/json");
